@@ -1,0 +1,608 @@
+<!--
+CandyCrush
+Your Name: Xueqi Fan
+Collaborators: Alice Jin
+-->
+<!DOCTYPE html>
+<html>
+<!--
+/* Copyright (c) 2017 MIT 6.813/6.831 course staff, all rights reserved.
+ * Redistribution of original or derived work requires permission of course staff.
+ */
+-->
+
+<head>
+<meta charset="utf-8">
+<title>CandyCrush</title>
+
+<!-- Load style sheets -->
+<link rel="stylesheet" href=
+  "https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-alpha.6/css/bootstrap.css">
+
+<link rel="stylesheet" href="mainLayout.css">
+
+<!-- Use mobile-aware viewport -->
+<meta name="viewport" content=
+  "width=device-width, initial-scale=1, shrink-to-fit=no">
+
+<!-- Load any supplemental Javascript libraries here -->
+<script src=
+  "https://ajax.googleapis.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
+<script src=
+  "https://cdnjs.cloudflare.com/ajax/libs/seedrandom/2.4.2/seedrandom.js">
+</script>
+<script src="candy.js"></script>
+<script src="board.js"></script>
+<script src="rules.js"></script>
+
+<script>
+
+// By default, the first board loaded by your page will be the same 
+// each time you load (which is accomplished by "seeding" the random
+// number generator. This makes testing (and grading!) easier!
+Math.seedrandom(0);
+
+
+// A short jQuery extension to read query parameters from the URL.
+$.extend({
+  getUrlVars: function() {
+    var vars = [], pair;
+    var pairs = window.location.search.substr(1).split('&');
+    for (var i = 0; i < pairs.length; i++) {
+      pair = pairs[i].split('=');
+      vars.push(pair[0]);
+      vars[pair[0]] = pair[1] &&
+          decodeURIComponent(pair[1].replace(/\+/g, ' '));
+    }
+    return vars;
+  },
+  getUrlVar: function(name) {
+    return $.getUrlVars()[name];
+  }
+});
+
+// constants
+var DEFAULT_BOARD_SIZE = 8;
+// all the valid letters, with maximum board size = 20
+var VALID_LETTERS = ['a','b','c','d','e','f','g','h','i','j',
+                     'k','l','m','n','o','p','q','r','s','t'];
+// all the valid numbers, with maximum board size = 20
+var VALID_NUMBERS = ['1','2','3','4','5','6','7','8','9','10',
+                     '11','12','13','14','15','16','17','18','19','20'];
+
+// data model at global scope for easier debugging
+var board;
+var rules;
+
+// initialize board
+var url_var_size = parseInt($.getUrlVar('size'));
+if (url_var_size >= 3 && url_var_size <= 20) {
+  board = new Board(url_var_size);
+} else {
+  board = new Board(DEFAULT_BOARD_SIZE);
+}
+
+/*
+ * Convert the coordinate of a candy on row i, column j to the textual coordinate (a1, b3, etc.)
+ * @param {int} i, row index of the candy
+ * @param {int} j, column index of the candy
+ * @returns {string} the textual coordinate of the candy located at (i, j)
+ */
+function getTextualCoord(i,j) {
+  var secondCoord = i+1;
+  var coord = VALID_LETTERS[j]+secondCoord.toString();
+  return coord;
+}
+
+/*
+ * Get the row and column index of a candy from its textual coordinate
+ * @param {string} coord, the textual coordinate of the candy
+ * @returns {number[]} an array, where the first element is the candy's row index, 
+ *                     second element is the column index
+ */
+function getRowCol(coord) {
+  var secondCoord = parseInt(VALID_LETTERS.indexOf(coord.charAt(0)));
+  var firstCoord = parseInt(coord.substring(1))-1;
+  return [firstCoord,secondCoord];
+}
+
+/*
+ * Create a new HTML table, a game board of size 320px x 320px
+ */
+function createBoard() {
+
+    var mainCol = $('#mainColumn');
+    var tbl = $('<table></table>').addClass('gameBoard');
+    var size = board.getSize();
+
+    for(var i = 0; i < size; i++){
+      var tr = $('<tr></tr>');
+      for(var j = 0; j < size; j++){
+        var td = $('<td></td>');
+        var cellId = getTextualCoord(i,j);
+        td.attr('id', 'td'+cellId);
+        var tdSize = 320.0/board.getSize();
+        td.css('width',tdSize);
+        td.css('height',tdSize);
+        var div = $('<div></div>')
+        div.attr('class','candies');
+        div.attr('id',cellId);
+        td.append(div);
+        tr.append(td);
+      }
+      tbl.append(tr);
+    }
+    mainCol.append(tbl);
+}
+
+/*
+ * Draw an arrow for suggested move starting at (row, col), pointing to the 
+ * adjacent candy if the said direction
+ * @param {int} row, row index of the candy
+ * @param {int} col, column index of the candy
+ * @param {string} direction, the direction of the candy with respect to the candy at (row, col)
+ */
+function drawArrow(row, col, direction) {
+  var canvas = document.getElementById("boardCanvas");
+  var ctx = canvas.getContext("2d");
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  var size = 320.0/board.getSize();
+  var start_x = size*(col+0.5);
+  var start_y = size*(row+0.5);
+  var end_x = start_x;
+  var end_y = start_y;
+  if (direction == 'up'){
+    end_y = start_y - size;
+  } else if (direction == 'down'){
+    end_y = start_y + size;
+  } else if (direction == 'left'){
+    end_x = start_x - size;
+  } else if (direction == 'right'){
+    end_x = start_x + size;
+  }
+  var arrowHead = size/2.0;
+  var angle = Math.atan2(end_y-start_y,end_x-start_x);
+  ctx.beginPath();
+  ctx.moveTo(start_x,start_y);
+  ctx.lineTo(end_x,end_y);
+  ctx.moveTo(end_x,end_y);
+  ctx.lineTo(end_x-arrowHead*Math.cos(angle-Math.PI/6),end_y-arrowHead*Math.sin(angle-Math.PI/6));
+  ctx.moveTo(end_x,end_y);
+  ctx.lineTo(end_x-arrowHead*Math.cos(angle+Math.PI/6),end_y-arrowHead*Math.sin(angle+Math.PI/6));
+  ctx.stokeStyle = 'black';
+  ctx.lineWidth = 30.0/board.getSize();
+  ctx.stroke();
+  ctx.closePath();
+}
+
+/*
+ * Clear all the strokes drawn on the canvas
+ */
+function clearCanvas() {
+  var canvas = document.getElementById("boardCanvas");
+  var ctx = canvas.getContext("2d");
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+}
+
+/*
+ * Set the background color of a cell in a game board, when the background color 
+ * of the cell is yellow, change the text of the cell's textual coordinate to be grey
+ * @param {string} cellId, the HTML id of the current cell element
+ * @param {string} color, the color of the candy in the current cell
+ */
+function setCellColor(cellId, color) {
+  var td = $('#'+cellId);
+  td.css('background-color',color);
+  if (color == 'yellow'){
+    td.css('color','grey');
+  } else {
+    td.css('color','white');
+  }
+}
+
+/*
+ * Set the image of a cell in a game board
+ * @param {string} cellId, the HTML id of the current cell element
+ * @param {string} color, the color of the candy in the current cell
+ */
+function setCellImage(cellId, color) {
+  var div = $('#'+cellId);
+  var image = "<img src='graphics/" + color + "-candy.png' />";
+  var size = 320.0/board.getSize();
+  div.html(image);
+  $('#'+cellId+' img').css('width',size);
+  $('#'+cellId+' img').css('height',size);
+}
+
+/*
+ * Move candy and flip the current candy with another candy in its specified direction
+ * @param {string} cellId, the HTML id of the current cell element 
+ * @param {string} direction, the direction of the movement, can only be one of
+ *                            ['up', 'down', 'left', 'right'] 
+ */
+function moveCandyIfValid(cellId, direction) {
+  var coord = getRowCol(cellId);
+  var row = coord[0];
+  var col = coord[1];
+  var candy1 = board.getCandyAt(row,col);
+  if (rules.isMoveTypeValid(candy1,direction)){
+    var candy2 = board.getCandyInDirection(candy1,direction);
+    board.flipCandies(candy1,candy2);
+  }
+}
+
+/*
+ * Check if an input is a valid textual coordinate of some candy
+ * @param {string} input, the user input for a targeted candy coordinate from the webpage 
+ * @returns {boolean} true if the user input is valid, valid if consisted of two 
+ *                    parts, a letter (a-t, case sensitive) and then a number 
+ *                    (1-20). false otherwise
+ */
+function isValidInput(input) {
+  if (input == undefined){
+    return false;
+  }
+  if (input.length > 1) {
+    if (VALID_LETTERS.indexOf(input.charAt(0)) > -1 && 
+        VALID_NUMBERS.indexOf(input.substring(1)) > -1){
+      return true;
+    }
+  }
+  return false;
+}
+
+/*
+ * Enable the directions buttons (arrows) given some user input. The up/down/left/right
+ * buttons are only enabled if the user input is an valid entry. Only the buttons that 
+ * represent a valid move based on the game rules are enabled
+ * @param {string} input, the user input for a targeted candy coordinate from the webpage 
+ */
+function enableDirectionButtonsGivenInput(input) {
+  var directions = ['up','down','left','right'];
+  for (i=0;i<directions.length;i++){
+    var direction = directions[i];
+    if (isValidInput(input)){
+      var coord = getRowCol(input);
+      var row = coord[0];
+      var col = coord[1];
+      var candy = board.getCandyAt(row,col);
+      if (rules.isMoveTypeValid(candy,direction)){
+        $('#'+direction).prop('disabled',false);
+        $('#'+direction).css('background-color', 'green');
+      }
+    } else {
+      $('#'+direction).prop('disabled',true);
+      $('#'+direction).css('background-color', 'lightgrey');
+    }
+  }
+}
+
+/*
+ * Disable all the direction buttons
+ */
+function disableDirectionButtons(){
+  var directions = ['up','down','left','right'];
+  for (i=0;i<directions.length;i++){
+    $('#'+directions[i]).prop('disabled',true);
+    $('#'+directions[i]).css('background-color', 'lightgrey');
+  }
+}
+
+/*
+ * Add a candy with animation
+ * @param {Object} candy, the candy to be added onto the board
+ * @param {number} toRow, the row index of the cell that the candy is moving to
+ * @param {number} toCol, the column index of the cell that the candy is moving to
+ * @param {number} fromRow, the row index of the cell that the candy is moving from
+ * @param {number} fromCol, the column index of the cell that the candy is moving from
+ */
+function animatedAdd(candy, toRow, toCol, fromRow, fromCol) {
+  var targetId = getTextualCoord(toRow,toCol);
+  var div = $('<div></div>');
+  div.attr('class','candies');
+  div.attr('id',targetId);
+  var size = 320.0/board.getSize();
+  div.css('width',size);
+  div.css('height',size);
+  var td = $('#td'+targetId);
+  td.append(div);
+
+  setCellImage(targetId,candy.color);
+
+  var targetOffset = $('#td'+targetId).offset();
+  if (fromRow < 0){
+    var fromCandyOffset = $('#td'+getTextualCoord(0,fromCol)).offset();
+    var topOffset = fromCandyOffset.top-size*(-fromRow);
+  } else{
+    var fromCandyOffset = $('#td'+getTextualCoord(fromRow,fromCol)).offset();
+    var topOffset = fromCandyOffset.top;
+  }
+  var copyOfDiv = div.clone();
+  copyOfDiv.appendTo('body');
+  div.hide();
+  copyOfDiv.css({
+    'position': 'absolute',
+    'left':fromCandyOffset.left,
+    'top':topOffset,
+    'z-index':50
+  });
+
+  copyOfDiv.animate({
+    'top':targetOffset.top,
+    'left':targetOffset.left
+  }, 400, function(){
+    div.show();
+    copyOfDiv.remove();
+  });
+}
+
+/*
+ * Move a candy with animation
+ * @param {Object} candy, the candy to be moved in the board
+ * @param {number} toRow, the row index of the cell that the candy is moving to
+ * @param {number} toCol, the column index of the cell that the candy is moving to
+ * @param {number} fromRow, the row index of the cell that the candy is moving from
+ * @param {number} fromCol, the column index of the cell that the candy is moving from
+ */
+function animatedMove(toRow, toCol, fromRow, fromCol) {
+  var size = 320.0/board.getSize();
+  var cellId = getTextualCoord(fromRow,fromCol);
+  var targetId = getTextualCoord(toRow,toCol);
+
+  var fromCandy = $('#'+cellId);
+  var copyOfFromCandy = $('#'+cellId).clone();
+
+  var fromCandyOffset = $('#td'+cellId).offset();
+  var toCandyOffset = $('#td'+targetId).offset();
+
+  fromCandy.appendTo('#td'+targetId);
+  copyOfFromCandy.appendTo('body')
+  copyOfFromCandy.css({
+    'position': 'absolute',
+    'left':fromCandyOffset.left,
+    'top':fromCandyOffset.top,
+    'z-index':100
+  });
+  fromCandy.hide();
+  copyOfFromCandy.animate({
+    'top':toCandyOffset.top,
+    'left':toCandyOffset.left
+  }, 400, function(){
+    fromCandy.show();
+    fromCandy.attr('id',targetId);
+    copyOfFromCandy.remove();
+  });
+
+}
+
+/*
+ * Crush a set of candy crushes if there is any, and move candies down
+ */
+function crushIfCrushable(){
+  if (rules.getCandyCrushes().length > 0){
+    setTimeout(function() {
+      rules.removeCrushes(rules.getCandyCrushes(),true);
+      setTimeout(function(){
+        rules.moveCandiesDown();
+      },500)
+    },500)
+  }
+}
+
+/*
+ * Add a div HTML element to the table cell if it's removed before starting a new game
+ * @param {string} cellId, the cell to be inspected, add a div if it's missing
+ */
+function addDivIfMissing(cellId){
+  var inspectedDiv = $('#'+cellId);
+  if (!inspectedDiv.length){
+    var div = $('<div></div>');
+    div.attr('class','candies');
+    div.attr('id',cellId);
+    var size = 320.0/board.getSize();
+    div.css('width',size);
+    div.css('height',size);
+    var td = $('#td'+cellId);
+    td.append(div);
+  }
+}
+
+// load a rule
+rules = new Rules(board);
+
+// Final initialization entry point: the Javascript code inside this block
+// runs at the end of start-up when the page has finished loading.
+$(document).ready(function()
+{
+  rules.prepareNewGame();
+});
+
+
+/* Event Handlers */
+// access the candy object with info.candy
+
+// add a candy to the board
+$(board).on('add', function(e, info)
+{
+  var cellId = getTextualCoord(info.candy.row, info.candy.col);
+  var candy = info.candy;
+  var toRow = info.toRow;
+  var toCol = info.toCol;
+  var fromRow = info.fromRow;
+  var fromCol = info.fromCol;
+  if (fromRow == null && fromCol == null){
+    addDivIfMissing(cellId);
+    setCellImage(cellId,info.candy.color);
+  } else {
+    animatedAdd(candy,toRow,toCol,fromRow,fromCol);
+    crushIfCrushable();
+  }
+});
+
+// move a candy on the board
+$(board).on('move', function(e, info)
+{
+  var toRow = info.toRow;
+  var toCol = info.toCol;
+  var fromRow = info.fromRow;
+  var fromCol = info.fromCol;
+  animatedMove( toRow, toCol,fromRow, fromCol);
+  crushIfCrushable();
+  var coord = getTextualCoord(toRow, toCol);
+});
+
+// remove a candy from the board
+$(board).on('remove', function(e, info)
+{
+  var row = info.fromRow;
+  var col = info.fromCol;
+  var cellId = getTextualCoord(row, col);
+  if (board.getScore() == 0 || !info.scoring){
+    $('#'+cellId+' img').remove();
+  } else {
+    $('#'+cellId).find('img').fadeOut(300,function(){
+      $('#'+cellId).remove();
+    });
+  }
+});
+
+// update the score of the board
+$(board).on('scoreUpdate', function(e, info)
+{
+  var score = info.score;
+  $('#score').text(score+' points');
+  if (score > 0){
+    var lastCandyColor = info.candy.color;
+    $('#score').css('background-color',lastCandyColor);
+    $('#score').css('border','1px solid '+lastCandyColor);
+    if (lastCandyColor == 'yellow'){
+      $('#score').css('color','grey');
+    } else {
+      $('#score').css('color','white');
+    }
+  } else {
+    $('#score').css('background-color','transparent');
+    $('#score').css('color','black');
+    $('#score').css('border','1px solid black');
+  }
+});
+
+// Button Events
+
+// generate a new game board when "New Game" is clicked
+$(document).on('click', "#newGame", function(evt)
+{
+  clearCanvas();
+  $('#cellToMove').val('');
+  $('#cellToMove').prop('disabled',true);
+  disableDirectionButtons();
+  board.clear();
+  rules.prepareNewGame();
+  $('#cellToMove').prop('disabled',false);
+  $('#cellToMove').focus();
+});
+
+// when a direction button is clicked, move the candy if the given user input is valid. 
+//    Reset all direction buttons to disabled. 
+$(document).on('click', ".move", function(evt)
+{
+  clearCanvas();
+  var input = $('#cellToMove').val();
+  var direction = evt.target.id;
+  moveCandyIfValid(input,direction);
+  disableDirectionButtons();
+  $('#cellToMove').val('');
+  $('#cellToMove').focus();
+
+});
+
+// when a candy is clicked, its textual coordinate should be displayed in the text input
+//    field on the right, and corresponding direction buttons should be enabled if the 
+//    candy in the cell specified by the user input can be moved in those directions
+$(document).on('click', "td", function(evt)
+{
+  disableDirectionButtons();
+  var input = $(this).find('div').attr('id');
+  $('#cellToMove').val(input);
+  enableDirectionButtonsGivenInput(input);
+});
+
+// show a random suggested move with an arrow
+$(document).on('click', '#showMove', function(evt)
+{
+  clearCanvas();
+  var validMove = rules.getRandomValidMove();
+  var candy = validMove.candy;
+  var direction = validMove.direction;
+  var row = candy.row;
+  var col = candy.col;
+  drawArrow(row,col,direction);
+});
+
+// keyboard events arrive here
+
+// enable corresponding direction buttons if the candy in the cell specified 
+//    by user input can be moved in those directions
+$(document).on('keyup', '#cellToMove', function(evt){
+  disableDirectionButtons();
+  var input = $('#cellToMove').val();
+  enableDirectionButtonsGivenInput(input);
+});
+
+
+</script>
+
+
+</head>
+
+<body>
+
+<div class="container">
+  <div class="row">
+    <div class="col-md-3" id="firstColumn">
+      <div>
+      <!-- Column 1 Code Here -->
+      <h1>Candy 
+      Crush</h1>
+      <div id="score"> 0 points </div>
+      <input type="button" class="btn btn-block newGame" value="New Game" id="newGame">
+      <input type="button" class="btn btn-block showMove" value="Show Move" id="showMove">
+      </div>
+    </div>
+
+    <div class="col-md-6" id="mainColumn">
+      <canvas id='boardCanvas' width="320" height="320"></canvas>
+      <script type="text/javascript">
+        // create a new game board in main column
+        createBoard();
+      </script>
+    </div>
+
+    <div class="col-md-3" id="lastColumn">
+
+      <label>Move:</label><input type="text" id="cellToMove" class="cellToMove">
+      <div class="container directions">
+        <div class="row">
+          <div class="col align-self-center">
+            <input type="button" class="btn move" value=&uarr; id="up" disabled>
+          </div>
+        </div>
+        <div class="row">
+          <div class="col align-self-start">
+            <input type="button" class="btn move" value=&larr; id="left" disabled>
+          </div>
+          <div class="col align-self-end">
+            <input type="button" class="btn move" value=&rarr; id="right" disabled>
+          </div>
+        </div>
+        <div class="row">
+          <div class="col align-self-center">
+            <input type="button" class="btn move" value=&darr; id="down" disabled>
+          </div>
+        </div>
+      </div>
+</div> 
+
+</body>
+
+</html>
